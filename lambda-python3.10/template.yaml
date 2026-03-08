@@ -8,9 +8,22 @@ Description: >
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 30
 
 Resources:
+  # S3 Bucket for storing CSV files
+  CSVStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'csv-storage-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   HelloWorldFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -26,6 +39,36 @@ Resources:
             Path: /hello
             Method: get
 
+  # CSV Uploader Lambda Function
+  CSVUploaderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: csv_uploader/
+      Handler: app.lambda_handler
+      Runtime: python3.10
+      Architectures:
+        - x86_64
+      Timeout: 30
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref CSVStorageBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref CSVStorageBucket
+      Events:
+        CSVUploadPost:
+          Type: Api
+          Properties:
+            Path: /upload-csv
+            Method: post
+            RestApiId: !Ref ServerlessRestApi
+        CSVUploadOptions:
+          Type: Api
+          Properties:
+            Path: /upload-csv
+            Method: options
+            RestApiId: !Ref ServerlessRestApi
+
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM
@@ -39,3 +82,17 @@ Outputs:
   HelloWorldFunctionIamRole:
     Description: "Implicit IAM Role created for Hello World function"
     Value: !GetAtt HelloWorldFunctionRole.Arn
+  
+  # CSV Uploader Outputs
+  CSVUploaderApi:
+    Description: "API Gateway endpoint URL for CSV uploader function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/upload-csv"
+  CSVUploaderFunction:
+    Description: "CSV Uploader Lambda Function ARN"
+    Value: !GetAtt CSVUploaderFunction.Arn
+  CSVStorageBucket:
+    Description: "S3 Bucket for storing CSV files"
+    Value: !Ref CSVStorageBucket
+  CSVStorageBucketArn:
+    Description: "S3 Bucket ARN"
+    Value: !GetAtt CSVStorageBucket.Arn
